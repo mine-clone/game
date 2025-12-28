@@ -2,46 +2,66 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>mine-clone</title>
+<title>Voxel World</title>
 <style>
 body { margin:0; overflow:hidden; background:#87ceeb; }
-#ui {
-  position:fixed; top:10px; left:10px;
-  font-family: monospace; color:#fff;
-  background: rgba(0,0,0,0.6);
-  padding: 10px; z-index:2;
-}
-#overlay {
-  position:fixed; top:0; left:0;
-  width:100%; height:100%;
-  cursor:pointer;
-  z-index:1;
-}
-#crosshair {
+canvas { display:block; }
+
+#crosshair{
   position:fixed;
-  top:50%; left:50%;
-  width:10px; height:10px;
-  margin-left:-5px; margin-top:-5px;
+  left:50%; top:50%;
+  width:14px; height:14px;
+  transform:translate(-50%,-50%);
   pointer-events:none;
-  z-index:3;
 }
-#crosshair:before,#crosshair:after {
-  content:'';
+#crosshair::before,#crosshair::after{
+  content:"";
   position:absolute;
   background:white;
 }
-#crosshair:before { left:50%; top:0; width:2px; height:100%; margin-left:-1px; }
-#crosshair:after { top:50%; left:0; width:100%; height:2px; margin-top:-1px; }
+#crosshair::before{ left:6px; top:0; width:2px; height:14px; }
+#crosshair::after{ top:6px; left:0; width:14px; height:2px; }
+
+#hotbar{
+  position:fixed; bottom:10px; left:50%;
+  transform:translateX(-50%);
+  display:flex; gap:5px;
+}
+.hotbar-slot{
+  width:40px; height:40px;
+  border:2px solid white;
+  background:rgba(0,0,0,0.4);
+}
+.hotbar-slot.active{
+  border-color:yellow;
+}
+
+#start{
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  font-size: 32px;
+  cursor: pointer;
+  z-index: 100;
+  font-family: Arial;
+}
 </style>
 </head>
 <body>
-<div id="ui">
-Click to play<br>
-WASD move | Space jump | Mouse look<br>
-Left Click = Break | Right Click = Place
-</div>
-<div id="overlay"></div>
+
+<div id="start">CLICK TO START</div>
 <div id="crosshair"></div>
+<div id="hotbar">
+  <div class="hotbar-slot active"></div>
+  <div class="hotbar-slot"></div>
+  <div class="hotbar-slot"></div>
+  <div class="hotbar-slot"></div>
+  <div class="hotbar-slot"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script>
@@ -51,162 +71,266 @@ scene.background = new THREE.Color(0x87ceeb);
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
 const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setSize(innerWidth,innerHeight);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xffffff,0.6));
-const sun = new THREE.DirectionalLight(0xffffff,0.8);
+// ===== LIGHTING =====
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
 sun.position.set(50,100,50);
+sun.castShadow = true;
+
+// Optimized shadow map
+sun.shadow.mapSize.width = 256;
+sun.shadow.mapSize.height = 256;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 200;
+sun.shadow.camera.left = -50;
+sun.shadow.camera.right = 50;
+sun.shadow.camera.top = 50;
+sun.shadow.camera.bottom = -50;
 scene.add(sun);
 
-window.addEventListener("resize",()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
-
-// ===== MATERIALS =====
-const geo = new THREE.BoxGeometry(1,1,1);
-
-const mats = {
-  grass:[ new THREE.MeshLambertMaterial({color:0x6dbf4b}) ],
-  wood:[ new THREE.MeshLambertMaterial({color:0x8b4513}) ],
-  leaves:[ new THREE.MeshLambertMaterial({color:0x00aa00}) ]
-};
-
 // ===== WORLD =====
+const geo = new THREE.BoxGeometry(1,1,1);
+const mats = {
+  grass: new THREE.MeshLambertMaterial({color:0x55aa44}),
+  wood: new THREE.MeshLambertMaterial({color:0x8b5a2b}),
+  leaf: new THREE.MeshLambertMaterial({color:0x228833})
+};
 const world = new Map();
 const key = (x,y,z)=>`${x},${y},${z}`;
 
 function addBlock(x,y,z,mat){
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(x+0.5,y+0.5,z+0.5);
-  scene.add(m);
-  world.set(key(x,y,z), m);
-  return m;
+  const b = new THREE.Mesh(geo, mat);
+  b.position.set(x+0.5,y+0.5,z+0.5);
+  b.receiveShadow = true;
+  if(y === 0 || !world.has(key(x,y+1,z))) b.castShadow = true;
+  scene.add(b);
+  world.set(key(x,y,z), b);
 }
 
-// ===== TERRAIN =====
-const SIZE=20;
-const BASE_HEIGHT=0;
+function removeBlock(x,y,z){
+  const k = key(x,y,z);
+  if(world.has(k)){
+    scene.remove(world.get(k));
+    world.delete(k);
+  }
+}
 
+// ===== TERRAIN + TALLER MINECRAFT-STYLE TREES =====
+const SIZE=15, BASE=0;
 for(let x=-SIZE;x<=SIZE;x++){
   for(let z=-SIZE;z<=SIZE;z++){
-    // flat base
-    addBlock(x,BASE_HEIGHT-1,z,mats.grass[0]);
-    // small hills
-    const hillHeight = Math.floor(Math.sin(x/4)*2 + Math.cos(z/4)*2 + Math.random()*1);
-    for(let y=BASE_HEIGHT;y<=BASE_HEIGHT+hillHeight;y++){
-      addBlock(x,y,z,mats.grass[0]);
+    addBlock(x,BASE-1,z,mats.grass);
+
+    const h=Math.max(0,Math.floor(Math.sin(x/6)*2 + Math.cos(z/6)*2));
+    for(let y=BASE;y<BASE+h;y++) addBlock(x,y,z,mats.grass);
+
+    // Tree generation
+    if(Math.random()<0.04){
+      const ty=BASE+h;
+      const trunkHeight = 5 + Math.floor(Math.random()*4); // 5-8 blocks now
+      // Trunk
+      for(let i=0;i<trunkHeight;i++) addBlock(x,ty+i,z,mats.wood);
+
+      // Leaves layers (pyramid shape)
+      const leafStart = ty + trunkHeight - 3;
+      for(let dy=0; dy<4; dy++){
+        const radius = 2 - dy; // top narrower
+        for(let dx=-radius; dx<=radius; dx++)
+          for(let dz=-radius; dz<=radius; dz++){
+            const lx = x+dx;
+            const ly = leafStart+dy;
+            const lz = z+dz;
+            if(!world.has(key(lx,ly,lz))) addBlock(lx,ly,lz,mats.leaf);
+          }
+      }
     }
   }
 }
 
-// ===== TREES =====
-function placeTree(x,z){
-  // find ground
-  let groundY = BASE_HEIGHT;
-  for(let y=SIZE;y>=-10;y--){
-    if(world.has(key(x,y,z))){ groundY=y; break; }
-  }
-  const h = 3+Math.floor(Math.random()*2);
-  for(let ty=1;ty<=h;ty++) addBlock(x,groundY+ty,z,mats.wood[0]);
-  for(let lx=-1;lx<=1;lx++)
-    for(let ly=0;ly<=2;ly++)
-      for(let lz=-1;lz<=1;lz++)
-        if(Math.abs(lx)+Math.abs(ly)+Math.abs(lz)<=3)
-          addBlock(x+lx,groundY+h+ly,z+lz,mats.leaves[0]);
-}
-
-for(let i=0;i<25;i++){
-  const x=Math.floor(Math.random()*40)-20;
-  const z=Math.floor(Math.random()*40)-20;
-  placeTree(x,z);
-}
-
 // ===== PLAYER =====
-const PLAYER_HEIGHT=2, PLAYER_RADIUS=0.35, EYE_HEIGHT=1.6, GRAVITY=0.02, SPEED=0.1, JUMP=0.35;
-const player = { pos:new THREE.Vector3(0,5,0), vel:new THREE.Vector3(), onGround:false };
+const player={
+  pos:new THREE.Vector3(0,2,0),
+  vel:new THREE.Vector3(),
+  onGround:false
+};
+const HEIGHT=2,RADIUS=0.35;
+const SPEED=0.12, GRAVITY=0.02, JUMP=0.35;
 
 // ===== INPUT =====
-let yaw=0,pitch=0,locked=false;
 const keys={};
-const overlay=document.getElementById("overlay");
-const ui=document.getElementById("ui");
-overlay.addEventListener("click",()=>renderer.domElement.requestPointerLock());
-document.addEventListener("pointerlockchange",()=>{locked=document.pointerLockElement===renderer.domElement; ui.style.display=locked?"none":"block";});
-document.addEventListener("mousemove", e=>{ if(!locked)return; yaw-=e.movementX*0.002; pitch=Math.max(-1.5, Math.min(1.5, pitch-e.movementY*0.002)); });
-document.addEventListener("keydown", e=>keys[e.code]=true);
-document.addEventListener("keyup", e=>keys[e.code]=false);
+let yaw=0, pitch=0, locked=false;
+
+addEventListener("keydown",e=>keys[e.code]=true);
+addEventListener("keyup",e=>keys[e.code]=false);
+
+const startScreen = document.getElementById("start");
+startScreen.addEventListener("click", ()=>{
+  startScreen.style.display = "none";
+  renderer.domElement.requestPointerLock();
+});
+
+document.addEventListener("pointerlockchange", ()=>{
+  locked = document.pointerLockElement===renderer.domElement;
+  if(!locked) startScreen.style.display = "flex";
+});
+
+addEventListener("mousemove", e=>{
+  if(!locked) return;
+  yaw -= e.movementX*0.002;
+  pitch -= e.movementY*0.002;
+  pitch = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, pitch));
+});
 
 // ===== COLLISION =====
-function collidesAt(x,y,z){
-  const minX=Math.floor(x-PLAYER_RADIUS);
-  const maxX=Math.floor(x+PLAYER_RADIUS);
-  const minY=Math.floor(y);
-  const maxY=Math.floor(y+PLAYER_HEIGHT);
-  const minZ=Math.floor(z-PLAYER_RADIUS);
-  const maxZ=Math.floor(z+PLAYER_RADIUS);
-  for(let X=minX;X<=maxX;X++)
-    for(let Y=minY;Y<=maxY;Y++)
-      for(let Z=minZ;Z<=maxZ;Z++)
+function collides(x,y,z){
+  for(let X=Math.floor(x-RADIUS);X<=Math.floor(x+RADIUS);X++)
+    for(let Y=Math.floor(y);Y<=Math.floor(y+HEIGHT);Y++)
+      for(let Z=Math.floor(z-RADIUS);Z<=Math.floor(z+RADIUS);Z++)
         if(world.has(key(X,Y,Z))) return true;
   return false;
 }
 
-// ===== BLOCK INTERACTION =====
-const ray=new THREE.Raycaster();
-document.addEventListener("mousedown", e=>{
-  if(!locked) return;
-  ray.setFromCamera({x:0,y:0}, camera);
-  const hit = ray.intersectObjects(Array.from(world.values()))[0];
-  if(!hit) return;
-  const hx=Math.floor(hit.object.position.x-0.5);
-  const hy=Math.floor(hit.object.position.y-0.5);
-  const hz=Math.floor(hit.object.position.z-0.5);
-  if(e.button===0){ scene.remove(hit.object); world.delete(key(hx,hy,hz)); }
-  if(e.button===2){
-    const nx=hx+hit.face.normal.x;
-    const ny=hy+hit.face.normal.y;
-    const nz=hz+hit.face.normal.z;
-    if(!collidesAt(nx+0.5,ny,nz+0.5)) addBlock(nx,ny,nz,mats.grass[0]);
+// ===== HOTBAR =====
+const hotbarSlots = document.querySelectorAll(".hotbar-slot");
+let activeSlot = 0;
+let hotbarItems = [mats.grass, mats.wood, mats.leaf, null, null];
+
+function updateHotbar(){
+  hotbarSlots.forEach((slot,i)=>{
+    slot.classList.toggle("active", i===activeSlot);
+    if(hotbarItems[i]){
+      slot.style.backgroundColor = "#" + hotbarItems[i].color.getHexString();
+    } else {
+      slot.style.backgroundColor = "rgba(0,0,0,0.4)";
+    }
+  });
+}
+updateHotbar();
+
+addEventListener("keydown", e => {
+  if(e.code.startsWith("Digit")){
+    const n = parseInt(e.code.slice(5))-1;
+    if(n>=0 && n<hotbarSlots.length){
+      activeSlot = n;
+      updateHotbar();
+    }
   }
 });
-document.addEventListener("contextmenu", e=>e.preventDefault());
 
-// ===== GAME LOOP =====
+// ===== MOUSE INTERACTIONS =====
+const ray = new THREE.Raycaster();
+addEventListener("mousedown", e=>{
+  if(!locked) return;
+  ray.setFromCamera({x:0,y:0},camera);
+  const hit = ray.intersectObjects([...world.values()])[0];
+  if(!hit) return;
+
+  const x=Math.floor(hit.object.position.x-0.5);
+  const y=Math.floor(hit.object.position.y-0.5);
+  const z=Math.floor(hit.object.position.z-0.5);
+
+  if(e.button===0) removeBlock(x,y,z);
+
+  if(e.button===2){
+    const n = hit.face.normal;
+    const px=x+n.x, py=y+n.y, pz=z+n.z;
+    if(!collides(px+0.5,py,pz+0.5) && hotbarItems[activeSlot]) 
+      addBlock(px,py,pz, hotbarItems[activeSlot]);
+  }
+
+  if(e.button===1){
+    const mat = hit.object.material;
+    let index = hotbarItems.findIndex(item => item === mat);
+    if(index!==-1){
+      activeSlot = index;
+    } else {
+      const empty = hotbarItems.findIndex(item=>item===null);
+      if(empty!==-1){
+        hotbarItems[empty] = mat;
+        activeSlot = empty;
+      }
+    }
+    updateHotbar();
+  }
+});
+addEventListener("contextmenu", e=>e.preventDefault());
+
+// ===== DAY/NIGHT CYCLE =====
+// 15 minutes to night, 30 min full cycle
+let time = 0; 
+const framesPerSecond = 60;
+const minutesPerFullCycle = 30;
+const increment = 1 / (minutesPerFullCycle * 60 * framesPerSecond);
+
+function updateLighting(){
+  const angle = time * Math.PI*2; 
+  sun.position.set(Math.cos(angle)*50, Math.sin(angle)*50 + 20, 50);
+  
+  if(sun.position.y>0){
+    sun.intensity = 0.5 + 0.5*Math.sin(angle);
+    ambientLight.intensity = 0.3 + 0.2*Math.sin(angle);
+    scene.background.setHSL(0.55,0.6,0.6 + 0.2*Math.sin(angle));
+  } else {
+    sun.intensity = 0;
+    ambientLight.intensity = 0.1;
+    scene.background.setHSL(0.65,0.5,0.05);
+  }
+
+  time += increment; 
+  if(time>1) time=0;
+}
+
+// ===== LOOP =====
 function loop(){
   requestAnimationFrame(loop);
+
   camera.rotation.order="YXZ";
   camera.rotation.y=yaw;
   camera.rotation.x=pitch;
 
-  const dir=new THREE.Vector3();
-  if(keys.KeyW) dir.z--;
-  if(keys.KeyS) dir.z++;
-  if(keys.KeyA) dir.x--;
-  if(keys.KeyD) dir.x++;
-  dir.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+  const dir = new THREE.Vector3(
+    (keys.KeyA?-1:0)+(keys.KeyD?1:0),
+    0,
+    (keys.KeyW?-1:0)+(keys.KeyS?1:0)
+  ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
 
-  player.vel.x=dir.x*SPEED;
-  player.vel.z=dir.z*SPEED;
-  player.vel.y-=GRAVITY;
+  player.vel.x = dir.x*SPEED;
+  player.vel.z = dir.z*SPEED;
+  player.vel.y -= GRAVITY;
 
-  if(player.onGround && keys.Space){ player.vel.y=JUMP; player.onGround=false; }
+  if(player.onGround && keys.Space){
+    player.vel.y = JUMP;
+    player.onGround=false;
+  }
 
   let ny=player.pos.y+player.vel.y;
-  if(collidesAt(player.pos.x,ny,player.pos.z)){
-    if(player.vel.y<0){ player.onGround=true; player.pos.y=Math.floor(player.pos.y+0.001); }
+  if(collides(player.pos.x,ny,player.pos.z)){
+    if(player.vel.y<0){
+      player.onGround=true;
+      player.pos.y=Math.floor(player.pos.y);
+    }
     player.vel.y=0;
-  } else player.pos.y=ny, player.onGround=false;
+  } else { player.pos.y=ny; player.onGround=false; }
 
   let nx=player.pos.x+player.vel.x;
-  if(!collidesAt(nx,player.pos.y,player.pos.z)) player.pos.x=nx;
+  if(!collides(nx,player.pos.y,player.pos.z)) player.pos.x=nx;
+
   let nz=player.pos.z+player.vel.z;
-  if(!collidesAt(player.pos.x,player.pos.y,nz)) player.pos.z=nz;
+  if(!collides(player.pos.x,player.pos.y,nz)) player.pos.z=nz;
 
-  camera.position.set(player.pos.x,player.pos.y+EYE_HEIGHT,player.pos.z);
+  camera.position.set(player.pos.x,player.pos.y+1.6,player.pos.z);
 
+  updateLighting();
   renderer.render(scene,camera);
 }
 loop();
 </script>
 </body>
 </html>
-
