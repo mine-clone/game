@@ -32,22 +32,15 @@ canvas { display:block; }
   border:2px solid white;
   background:rgba(0,0,0,0.4);
 }
-.hotbar-slot.active{
-  border-color:yellow;
-}
+.hotbar-slot.active{ border-color:yellow; }
 
 #start{
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0,0,0,0.6);
-  color: white;
-  font-size: 32px;
-  cursor: pointer;
-  z-index: 100;
-  font-family: Arial;
+  position:fixed; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.6);
+  color:white; font-size:32px;
+  cursor:pointer; z-index:10;
+  font-family:Arial;
 }
 </style>
 </head>
@@ -76,24 +69,38 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
+addEventListener("resize",()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
 // ===== LIGHTING =====
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+const ambientLight = new THREE.AmbientLight(0xffffff,0.4);
 scene.add(ambientLight);
 
-const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-sun.position.set(50,100,50);
+const sun = new THREE.DirectionalLight(0xffffff,0.8);
 sun.castShadow = true;
-
-// Optimized shadow map
-sun.shadow.mapSize.width = 256;
-sun.shadow.mapSize.height = 256;
-sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 200;
+sun.shadow.mapSize.set(256,256);
 sun.shadow.camera.left = -50;
 sun.shadow.camera.right = 50;
 sun.shadow.camera.top = 50;
 sun.shadow.camera.bottom = -50;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 200;
 scene.add(sun);
+scene.add(sun.target);
+
+// Visible Sun
+const sunMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(3,16,16),
+  new THREE.MeshBasicMaterial({color:0xffffaa})
+);
+scene.add(sunMesh);
+
+// Moon light
+const moon = new THREE.DirectionalLight(0x8899ff,0);
+scene.add(moon);
 
 // ===== WORLD =====
 const geo = new THREE.BoxGeometry(1,1,1);
@@ -102,90 +109,85 @@ const mats = {
   wood: new THREE.MeshLambertMaterial({color:0x8b5a2b}),
   leaf: new THREE.MeshLambertMaterial({color:0x228833})
 };
+
 const world = new Map();
-const key = (x,y,z)=>`${x},${y},${z}`;
+const key=(x,y,z)=>`${x},${y},${z}`;
 
 function addBlock(x,y,z,mat){
-  const b = new THREE.Mesh(geo, mat);
+  const b = new THREE.Mesh(geo,mat);
   b.position.set(x+0.5,y+0.5,z+0.5);
   b.receiveShadow = true;
-  if(y === 0 || !world.has(key(x,y+1,z))) b.castShadow = true;
+  if(!world.has(key(x,y+1,z))) b.castShadow = true;
   scene.add(b);
-  world.set(key(x,y,z), b);
+  world.set(key(x,y,z),b);
 }
 
 function removeBlock(x,y,z){
-  const k = key(x,y,z);
+  const k=key(x,y,z);
   if(world.has(k)){
     scene.remove(world.get(k));
     world.delete(k);
   }
 }
 
-// ===== TERRAIN + TALLER MINECRAFT-STYLE TREES =====
+// ===== TERRAIN + FIXED TREES =====
 const SIZE=15, BASE=0;
 for(let x=-SIZE;x<=SIZE;x++){
   for(let z=-SIZE;z<=SIZE;z++){
     addBlock(x,BASE-1,z,mats.grass);
 
-    const h=Math.max(0,Math.floor(Math.sin(x/6)*2 + Math.cos(z/6)*2));
+    const h=Math.max(0,Math.floor(Math.sin(x/6)*2+Math.cos(z/6)*2));
     for(let y=BASE;y<BASE+h;y++) addBlock(x,y,z,mats.grass);
 
-    // Tree generation
-    if(Math.random()<0.04){
+    // FEWER TREES
+    if(Math.random()<0.015){
       const ty=BASE+h;
-      const trunkHeight = 5 + Math.floor(Math.random()*4); // 5-8 blocks now
-      // Trunk
-      for(let i=0;i<trunkHeight;i++) addBlock(x,ty+i,z,mats.wood);
+      const trunk=6+Math.floor(Math.random()*3); // 6-8 tall
 
-      // Leaves layers (pyramid shape)
-      const leafStart = ty + trunkHeight - 3;
-      for(let dy=0; dy<4; dy++){
-        const radius = 2 - dy; // top narrower
-        for(let dx=-radius; dx<=radius; dx++)
-          for(let dz=-radius; dz<=radius; dz++){
-            const lx = x+dx;
-            const ly = leafStart+dy;
-            const lz = z+dz;
-            if(!world.has(key(lx,ly,lz))) addBlock(lx,ly,lz,mats.leaf);
+      // Trunk
+      for(let i=0;i<trunk;i++) addBlock(x,ty+i,z,mats.wood);
+
+      // Leaves (no wood sticking out)
+      const leafStart=ty+trunk-2;
+      for(let dy=0;dy<4;dy++){
+        const r=2-dy;
+        for(let dx=-r;dx<=r;dx++){
+          for(let dz=-r;dz<=r;dz++){
+            const ly=leafStart+dy;
+            if(ly>ty+trunk-1) continue;
+            const k2=key(x+dx,ly,z+dz);
+            if(!world.has(k2)) addBlock(x+dx,ly,z+dz,mats.leaf);
           }
+        }
       }
     }
   }
 }
 
 // ===== PLAYER =====
-const player={
-  pos:new THREE.Vector3(0,2,0),
-  vel:new THREE.Vector3(),
-  onGround:false
-};
-const HEIGHT=2,RADIUS=0.35;
-const SPEED=0.12, GRAVITY=0.02, JUMP=0.35;
+const player={pos:new THREE.Vector3(0,2,0),vel:new THREE.Vector3(),onGround:false};
+const SPEED=0.12, GRAVITY=0.02, JUMP=0.35, HEIGHT=2, RADIUS=0.35;
 
 // ===== INPUT =====
 const keys={};
-let yaw=0, pitch=0, locked=false;
+let yaw=0,pitch=0,locked=false;
 
 addEventListener("keydown",e=>keys[e.code]=true);
 addEventListener("keyup",e=>keys[e.code]=false);
 
-const startScreen = document.getElementById("start");
-startScreen.addEventListener("click", ()=>{
-  startScreen.style.display = "none";
-  renderer.domElement.requestPointerLock();
+const start=document.getElementById("start");
+start.onclick=()=>renderer.domElement.requestPointerLock();
+
+document.addEventListener("pointerlockchange",()=>{
+  locked=document.pointerLockElement===renderer.domElement;
+  start.style.display=locked?"none":"flex";
 });
 
-document.addEventListener("pointerlockchange", ()=>{
-  locked = document.pointerLockElement===renderer.domElement;
-  if(!locked) startScreen.style.display = "flex";
-});
-
-addEventListener("mousemove", e=>{
+addEventListener("mousemove",e=>{
   if(!locked) return;
-  yaw -= e.movementX*0.002;
-  pitch -= e.movementY*0.002;
-  pitch = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, pitch));
+  yaw-=e.movementX*0.002;
+  pitch-=e.movementY*0.002;
+  pitch=Math.max(-1.5,Math.min(1.5,pitch));
 });
 
 // ===== COLLISION =====
@@ -198,38 +200,32 @@ function collides(x,y,z){
 }
 
 // ===== HOTBAR =====
-const hotbarSlots = document.querySelectorAll(".hotbar-slot");
-let activeSlot = 0;
-let hotbarItems = [mats.grass, mats.wood, mats.leaf, null, null];
+const slots=document.querySelectorAll(".hotbar-slot");
+let active=0;
+let items=[mats.grass,mats.wood,mats.leaf,null,null];
 
 function updateHotbar(){
-  hotbarSlots.forEach((slot,i)=>{
-    slot.classList.toggle("active", i===activeSlot);
-    if(hotbarItems[i]){
-      slot.style.backgroundColor = "#" + hotbarItems[i].color.getHexString();
-    } else {
-      slot.style.backgroundColor = "rgba(0,0,0,0.4)";
-    }
+  slots.forEach((s,i)=>{
+    s.classList.toggle("active",i===active);
+    s.style.background=items[i]?
+      "#"+items[i].color.getHexString():"rgba(0,0,0,0.4)";
   });
 }
 updateHotbar();
 
-addEventListener("keydown", e => {
+addEventListener("keydown",e=>{
   if(e.code.startsWith("Digit")){
-    const n = parseInt(e.code.slice(5))-1;
-    if(n>=0 && n<hotbarSlots.length){
-      activeSlot = n;
-      updateHotbar();
-    }
+    active=parseInt(e.code[5])-1;
+    updateHotbar();
   }
 });
 
-// ===== MOUSE INTERACTIONS =====
-const ray = new THREE.Raycaster();
-addEventListener("mousedown", e=>{
+// ===== BLOCK INTERACTION =====
+const ray=new THREE.Raycaster();
+addEventListener("mousedown",e=>{
   if(!locked) return;
   ray.setFromCamera({x:0,y:0},camera);
-  const hit = ray.intersectObjects([...world.values()])[0];
+  const hit=ray.intersectObjects([...world.values()])[0];
   if(!hit) return;
 
   const x=Math.floor(hit.object.position.x-0.5);
@@ -237,54 +233,46 @@ addEventListener("mousedown", e=>{
   const z=Math.floor(hit.object.position.z-0.5);
 
   if(e.button===0) removeBlock(x,y,z);
-
-  if(e.button===2){
-    const n = hit.face.normal;
-    const px=x+n.x, py=y+n.y, pz=z+n.z;
-    if(!collides(px+0.5,py,pz+0.5) && hotbarItems[activeSlot]) 
-      addBlock(px,py,pz, hotbarItems[activeSlot]);
+  if(e.button===2 && items[active]){
+    const n=hit.face.normal;
+    if(!collides(x+n.x+0.5,y+n.y,z+n.z+0.5))
+      addBlock(x+n.x,y+n.y,z+n.z,items[active]);
   }
-
   if(e.button===1){
-    const mat = hit.object.material;
-    let index = hotbarItems.findIndex(item => item === mat);
-    if(index!==-1){
-      activeSlot = index;
-    } else {
-      const empty = hotbarItems.findIndex(item=>item===null);
-      if(empty!==-1){
-        hotbarItems[empty] = mat;
-        activeSlot = empty;
-      }
-    }
+    const mat=hit.object.material;
+    let i=items.indexOf(mat);
+    if(i===-1) i=items.findIndex(v=>v===null);
+    if(i!==-1){ items[i]=mat; active=i; }
     updateHotbar();
   }
 });
-addEventListener("contextmenu", e=>e.preventDefault());
+addEventListener("contextmenu",e=>e.preventDefault());
 
-// ===== DAY/NIGHT CYCLE =====
-// 15 minutes to night, 30 min full cycle
-let time = 0; 
-const framesPerSecond = 60;
-const minutesPerFullCycle = 30;
-const increment = 1 / (minutesPerFullCycle * 60 * framesPerSecond);
+// ===== DAY / NIGHT =====
+let time=0;
+const inc=1/(30*60*60);
 
 function updateLighting(){
-  const angle = time * Math.PI*2; 
-  sun.position.set(Math.cos(angle)*50, Math.sin(angle)*50 + 20, 50);
-  
-  if(sun.position.y>0){
-    sun.intensity = 0.5 + 0.5*Math.sin(angle);
-    ambientLight.intensity = 0.3 + 0.2*Math.sin(angle);
-    scene.background.setHSL(0.55,0.6,0.6 + 0.2*Math.sin(angle));
-  } else {
-    sun.intensity = 0;
-    ambientLight.intensity = 0.1;
-    scene.background.setHSL(0.65,0.5,0.05);
-  }
+  const a=time*Math.PI*2;
+  const x=Math.cos(a)*80;
+  const y=Math.sin(a)*80+20;
 
-  time += increment; 
-  if(time>1) time=0;
+  sunMesh.position.set(x,y,50);
+  sun.position.copy(sunMesh.position);
+  sun.target.position.set(0,0,0);
+
+  if(y>0){
+    sun.intensity=0.8;
+    ambientLight.intensity=0.4;
+    moon.intensity=0;
+    scene.background.setHSL(0.55,0.6,0.65);
+  }else{
+    sun.intensity=0;
+    ambientLight.intensity=0.12;
+    moon.intensity=0.25;
+    scene.background.setHSL(0.65,0.5,0.07);
+  }
+  time+=inc; if(time>1) time=0;
 }
 
 // ===== LOOP =====
@@ -295,38 +283,30 @@ function loop(){
   camera.rotation.y=yaw;
   camera.rotation.x=pitch;
 
-  const dir = new THREE.Vector3(
+  const dir=new THREE.Vector3(
     (keys.KeyA?-1:0)+(keys.KeyD?1:0),
     0,
     (keys.KeyW?-1:0)+(keys.KeyS?1:0)
   ).normalize().applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
 
-  player.vel.x = dir.x*SPEED;
-  player.vel.z = dir.z*SPEED;
-  player.vel.y -= GRAVITY;
+  player.vel.x=dir.x*SPEED;
+  player.vel.z=dir.z*SPEED;
+  player.vel.y-=GRAVITY;
 
-  if(player.onGround && keys.Space){
-    player.vel.y = JUMP;
-    player.onGround=false;
-  }
+  if(player.onGround&&keys.Space){player.vel.y=JUMP;player.onGround=false;}
 
   let ny=player.pos.y+player.vel.y;
   if(collides(player.pos.x,ny,player.pos.z)){
-    if(player.vel.y<0){
-      player.onGround=true;
-      player.pos.y=Math.floor(player.pos.y);
-    }
+    if(player.vel.y<0){player.onGround=true;player.pos.y=Math.floor(player.pos.y);}
     player.vel.y=0;
-  } else { player.pos.y=ny; player.onGround=false; }
+  } else player.pos.y=ny;
 
   let nx=player.pos.x+player.vel.x;
   if(!collides(nx,player.pos.y,player.pos.z)) player.pos.x=nx;
-
   let nz=player.pos.z+player.vel.z;
   if(!collides(player.pos.x,player.pos.y,nz)) player.pos.z=nz;
 
   camera.position.set(player.pos.x,player.pos.y+1.6,player.pos.z);
-
   updateLighting();
   renderer.render(scene,camera);
 }
