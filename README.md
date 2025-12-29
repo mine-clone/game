@@ -8,3 +8,5 @@ download mine-clone.html for offline play
  * full size worlds
  * touch controls for mobile
  * etc
+# update
+there are now lighting
