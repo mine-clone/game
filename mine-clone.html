@@ -30,7 +30,7 @@ canvas { display:block; }
 .hotbar-slot{
   width:40px; height:40px;
   border:2px solid white;
-  background:rgba(0,0,0,0.4);
+  background:rgba(0, 0, 0, 0.4);
 }
 .hotbar-slot.active{ border-color:yellow; }
 
@@ -57,6 +57,7 @@ canvas { display:block; }
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
 <script>
 // ===== SCENE =====
 const scene = new THREE.Scene();
@@ -76,10 +77,12 @@ addEventListener("resize",()=>{
 });
 
 // ===== LIGHTING =====
-const ambientLight = new THREE.AmbientLight(0xffffff,0.4);
+const ambientLight = new THREE.AmbientLight(0xffffff,0.65);
+
 scene.add(ambientLight);
 
-const sun = new THREE.DirectionalLight(0xffffff,0.8);
+const sun = new THREE.DirectionalLight(0xfff2cc,1.1);
+
 sun.castShadow = true;
 sun.shadow.mapSize.set(256,256);
 sun.shadow.camera.left = -50;
@@ -102,12 +105,36 @@ scene.add(sunMesh);
 const moon = new THREE.DirectionalLight(0x8899ff,0);
 scene.add(moon);
 
+const textureLoader = new THREE.TextureLoader();
+
+function makeMaterial(color, url){
+  if(!url){
+    return new THREE.MeshLambertMaterial({ color });
+  }
+
+  const tex = textureLoader.load(url);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+
+  return new THREE.MeshLambertMaterial({ map: tex });
+}
+
+
 // ===== WORLD =====
+
+// ===== TEXTURE URLS (PASTE PNG LINKS HERE) =====
+const TEXTURES = {
+  grass: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSg_-bqwE6hgIr2gGHuDBEZIxfECgl-zF_E3A&s", // grass block png
+  wood: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS5VmgsMxS74pqN215tUPSVe7boLhKXcS_P2Q&s",  // wood / log png
+  leaf: "https://cdn.modrinth.com/data/Ocyuzgoe/f51e8ebd6737cad5c7b1d3d81bf17f2eef4164f4.png"   // leaves png
+};
+
 const geo = new THREE.BoxGeometry(1,1,1);
 const mats = {
-  grass: new THREE.MeshLambertMaterial({color:0x55aa44}),
-  wood: new THREE.MeshLambertMaterial({color:0x8b5a2b}),
-  leaf: new THREE.MeshLambertMaterial({color:0x228833})
+  grass: makeMaterial(0x55aa44, TEXTURES.grass),
+  wood:  makeMaterial(0x8b5a2b, TEXTURES.wood),
+  leaf:  makeMaterial(0x228833, TEXTURES.leaf)
 };
 
 const world = new Map();
