@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Infinite Hill Climb Physics</title>
+<style>
+body { margin:0; overflow:hidden; background:#87ceeb; font-family:Arial }
+canvas { display:none }
+#menu {
+  position:fixed; inset:0;
+  background:linear-gradient(#87ceeb,#4caf50);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+}
+#menu h1 { font-size:48px }
+#menu button { font-size:22px; padding:12px 30px }
+</style>
+</head>
+<body>
+
+<div id="menu">
+  <h1>🚗 Infinite Hill Climb</h1>
+  <button onclick="start()">Start Game</button>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+canvas.width = innerWidth;
+canvas.height = innerHeight;
+
+let keys = {};
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+let gravity = 0.6;
+let camX = 0;
+let running = false;
+
+// --- CAR ---
+const car = {
+  x: 200,
+  y: 0,
+  vx: 0,
+  vy: 0,
+  angle: 0,
+  va: 0,
+  w: 70,
+  h: 30,
+  grounded: false
+};
+
+// --- INFINITE TERRAIN ---
+let points = [];
+let step = 80;
+
+function generate(startX) {
+  let lastY = points.length ? points[points.length-1].y : 400;
+  for (let x = startX; x < startX + 2000; x += step) {
+    lastY += (Math.random() - 0.5) * 120;
+    lastY = Math.max(250, Math.min(550, lastY));
+    points.push({ x, y: lastY });
+  }
+}
+
+function groundY(x) {
+  for (let i = 0; i < points.length - 1; i++) {
+    let a = points[i];
+    let b = points[i+1];
+    if (x >= a.x && x <= b.x) {
+      let t = (x - a.x) / (b.x - a.x);
+      return a.y * (1 - t) + b.y * t;
+    }
+  }
+  return 600;
+}
+
+function groundAngle(x) {
+  let y1 = groundY(x - 5);
+  let y2 = groundY(x + 5);
+  return Math.atan2(y2 - y1, 10);
+}
+
+function start() {
+  document.getElementById("menu").style.display = "none";
+  canvas.style.display = "block";
+
+  points = [];
+  generate(0);
+  car.x = 200;
+  car.vx = car.vy = car.va = 0;
+  car.angle = 0;
+  car.y = groundY(car.x) - 40;
+
+  running = true;
+  loop();
+}
+
+function update() {
+  // input
+  if (keys["d"] || keys["arrowright"]) {
+    car.vx += 0.2;
+    if (!car.grounded) car.va += 0.01;
+  }
+  if (keys["a"] || keys["arrowleft"]) {
+    car.vx -= 0.15;
+    if (!car.grounded) car.va -= 0.01;
+  }
+
+  // physics
+  car.vy += gravity;
+  car.x += car.vx;
+  car.y += car.vy;
+  car.angle += car.va;
+
+  let gy = groundY(car.x);
+  let contactY = gy - 35;
+
+  car.grounded = false;
+  if (car.y > contactY) {
+    car.y = contactY;
+    car.vy = 0;
+    car.grounded = true;
+
+    // align slightly to ground
+    let target = groundAngle(car.x);
+    car.angle += (target - car.angle) * 0.15;
+    car.va *= 0.5;
+  }
+
+  car.vx *= 0.995;
+  car.va *= 0.99;
+
+  camX = car.x - 200;
+
+  // generate more terrain
+  if (car.x + 1000 > points[points.length - 1].x) {
+    generate(points[points.length - 1].x);
+  }
+
+  // flip fail
+  if (car.grounded && Math.abs(car.angle) > Math.PI / 2) {
+    running = false;
+    setTimeout(() => alert("💥 Car Flipped! Game Over"), 100);
+  }
+}
+
+function drawGround() {
+  ctx.beginPath();
+  ctx.moveTo(points[0].x - camX, canvas.height);
+  points.forEach(p => ctx.lineTo(p.x - camX, p.y));
+  ctx.lineTo(points[points.length-1].x - camX, canvas.height);
+  ctx.fillStyle = "#4caf50";
+  ctx.fill();
+}
+
+function drawCar() {
+  ctx.save();
+  ctx.translate(car.x - camX, car.y);
+  ctx.rotate(car.angle);
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(-car.w/2, -car.h, car.w, car.h);
+
+  ctx.fillStyle = "black";
+  ctx.beginPath();
+  ctx.arc(-25, 0, 10, 0, Math.PI*2);
+  ctx.arc(25, 0, 10, 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function loop() {
+  if (!running) return;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  update();
+  drawGround();
+  drawCar();
+
+  ctx.fillStyle = "#000";
+  ctx.font = "18px Arial";
+  ctx.fillText("Distance: " + Math.floor(car.x) + " m", 20, 30);
+
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
