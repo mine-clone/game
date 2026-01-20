@@ -9,4 +9,6 @@ download mine-clone.html for offline play
  * touch controls for mobile
  * etc
 # update
- *there are now lighting
+ * there are now lighting
+ * textures added
+ * 
