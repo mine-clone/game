@@ -11,4 +11,6 @@ download mine-clone.html for offline play
 # update
  * there are now lighting
  * textures added
- * 
+# update
+ * now i am also working on an shooter game and a hill climbing game
+ * also updateted the mineclone game
