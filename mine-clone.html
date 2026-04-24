@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Voxel World</title>
+<title>mine-clone</title>
 <style>
   /* TOUCH UI */
 
@@ -11,6 +11,7 @@ position:fixed;
 inset:0;
 pointer-events:none;
 font-family:Arial;
+display:none;   /* HIDE by default */
 }
 
 /* joystick */
@@ -102,6 +103,11 @@ canvas { display:block; }
   cursor:pointer; z-index:10;
   font-family:Arial;
 }
+/* SHOW TOUCH CONTROLS ONLY ON TOUCH DEVICES */
+@media (hover:none) and (pointer:coarse){
+  #touch-ui{ display:block; }
+}
+
 </style>
 </head>
 <body>
