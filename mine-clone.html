@@ -11,30 +11,33 @@ position:fixed;
 inset:0;
 pointer-events:none;
 font-family:Arial;
-display:none;   /* HIDE by default */
+/*display:none;   /* HIDE by default */
 }
 
 /* joystick */
 
 #joystick{
 position:absolute;
-bottom:40px;
-left:40px;
-width:120px;
-height:120px;
+bottom:35px;
+left:35px;
+width:140px;
+height:140px;
 border-radius:50%;
-background:rgba(0,0,0,0.35);
+background:rgba(255,255,255,0.08);
+border:2px solid rgba(255,255,255,0.25);
+backdrop-filter: blur(4px);
 pointer-events:auto;
 }
 
 #stick{
 position:absolute;
-left:40px;
-top:40px;
+left:50px;
+top:50px;
 width:40px;
 height:40px;
 border-radius:50%;
-background:white;
+background:rgba(255,255,255,0.9);
+box-shadow:0 0 10px rgba(255,255,255,0.6);
 }
 
 /* look area */
@@ -43,7 +46,7 @@ background:white;
 position:absolute;
 right:0;
 top:0;
-width:50%;
+width:60%;
 height:100%;
 pointer-events:auto;
 }
@@ -52,20 +55,22 @@ pointer-events:auto;
 
 #jumpBtn,#breakBtn,#placeBtn{
 position:absolute;
-right:40px;
-width:80px;
-height:40px;
+right:25px;
+width:70px;
+height:70px;
 border:none;
-border-radius:10px;
-background:rgba(0,0,0,0.6);
+border-radius:50%;
+background:rgba(255,255,255,0.15);
+border:2px solid rgba(255,255,255,0.35);
 color:white;
+font-weight:bold;
 pointer-events:auto;
+backdrop-filter: blur(4px);
 }
 
-#jumpBtn{ bottom:120px; }
-#breakBtn{ bottom:70px; }
-#placeBtn{ bottom:20px; }
-body { margin:0; overflow:hidden; background:#87ceeb; }
+#jumpBtn{ bottom:140px; font-size:18px; }
+#breakBtn{ bottom:60px; font-size:14px; }
+#placeBtn{ bottom:60px; right:110px; font-size:14px; }
 canvas { display:block; }
 
 #crosshair{
@@ -130,9 +135,9 @@ canvas { display:block; }
 
 <div id="touch-look"></div>
 
-<button id="jumpBtn">JUMP</button>
-<button id="breakBtn">BREAK</button>
-<button id="placeBtn">PLACE</button>
+<button id="jumpBtn">↑</button>
+<button id="breakBtn">⛏</button>
+<button id="placeBtn">⬛</button>
 
 </div>
 
