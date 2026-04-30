@@ -14,3 +14,4 @@ download mine-clone.html for offline play
 # update
  * now i am also working on an shooter game and a hill climbing game
  * also updateted the mineclone game
+# go to [mine-clone](mine-clone.github.io/game) to play
